@@ -6,16 +6,17 @@ game logic from game.py and constants from config.py but contains
 no game logic of its own.
 """
 
-import pygame
 import sys
-from typing import Optional, Tuple
+from typing import Callable, List, Sequence, Tuple
 
-from game import BlackjackGame, GameState, Card, Result, SUIT_SYMBOLS
+import pygame
+
+from game import RED_SUITS, SUIT_SYMBOLS, BlackjackGame, Card, GameState, Result
 import config as cfg
 
 
-# Which colour each outcome is drawn in. Presentation lives here, not in
-# the engine, so game.py never needs to know about colours.
+# Which color each outcome is drawn in. Presentation lives here, not in
+# the engine, so game.py never needs to know about colors.
 RESULT_COLORS = {
     Result.WIN:       cfg.COLOR_RESULT_WIN,
     Result.BLACKJACK: cfg.COLOR_RESULT_BJ,
@@ -29,7 +30,7 @@ RESULT_COLORS = {
 # ---------------------------------------------------------------------------
 
 class Button:
-    """A clickable button with hover effect."""
+    """A clickable button that knows the action it triggers."""
 
     def __init__(
         self,
@@ -41,31 +42,30 @@ class Button:
         color: Tuple[int, int, int],
         hover_color: Tuple[int, int, int],
         font: pygame.font.Font,
+        on_click: Callable[[], None],
     ) -> None:
         self.rect = pygame.Rect(x, y, width, height)
         self.text = text
         self.color = color
         self.hover_color = hover_color
         self.font = font
+        self.on_click = on_click
         self.is_hovered = False
 
     def draw(self, surface: pygame.Surface) -> None:
         """Render the button on the given surface."""
         color = self.hover_color if self.is_hovered else self.color
 
-        # Draw rounded rectangle background
+        # Rounded background, then a border drawn on top of it
         pygame.draw.rect(surface, color, self.rect, border_radius=cfg.BTN_RADIUS)
-
-        # Draw border
         pygame.draw.rect(
             surface, cfg.COLOR_BTN_BORDER, self.rect,
-            width=2, border_radius=cfg.BTN_RADIUS,
+            width=cfg.BTN_BORDER_WIDTH, border_radius=cfg.BTN_RADIUS,
         )
 
-        # Draw centered text
+        # Centered label
         text_surface = self.font.render(self.text, True, cfg.COLOR_BTN_TEXT)
-        text_rect = text_surface.get_rect(center=self.rect.center)
-        surface.blit(text_surface, text_rect)
+        surface.blit(text_surface, text_surface.get_rect(center=self.rect.center))
 
     def update_hover(self, mouse_pos: Tuple[int, int]) -> None:
         """Update hover state based on mouse position."""
@@ -74,6 +74,42 @@ class Button:
     def is_clicked(self, mouse_pos: Tuple[int, int]) -> bool:
         """Check if the button was clicked at the given position."""
         return self.rect.collidepoint(mouse_pos)
+
+
+# ---------------------------------------------------------------------------
+# Text helper
+# ---------------------------------------------------------------------------
+
+def draw_text(
+    surface: pygame.Surface,
+    text: str,
+    font: pygame.font.Font,
+    color: Tuple[int, int, int],
+    position: Tuple[int, int],
+    center: bool = False,
+    shadow: bool = False,
+) -> None:
+    """
+    Draw text, optionally centered on `position` and optionally with a
+    small drop shadow to keep it legible against the felt.
+    """
+    rendered = font.render(text, True, color)
+
+    if shadow:
+        shadow_surface = font.render(text, True, cfg.COLOR_TEXT_SHADOW)
+        shadow_pos = (
+            position[0] + cfg.TEXT_SHADOW_OFFSET,
+            position[1] + cfg.TEXT_SHADOW_OFFSET,
+        )
+        if center:
+            surface.blit(shadow_surface, shadow_surface.get_rect(center=shadow_pos))
+        else:
+            surface.blit(shadow_surface, shadow_pos)
+
+    if center:
+        surface.blit(rendered, rendered.get_rect(center=position))
+    else:
+        surface.blit(rendered, position)
 
 
 # ---------------------------------------------------------------------------
@@ -95,86 +131,93 @@ def draw_card(
     rect = pygame.Rect(x, y, cfg.CARD_WIDTH, cfg.CARD_HEIGHT)
 
     if not face_up:
-        # Card back — solid color with a subtle pattern
-        pygame.draw.rect(
-            surface, cfg.COLOR_CARD_BACK, rect,
-            border_radius=cfg.CARD_RADIUS,
-        )
+        # Card back: solid fill, border, then a lighter inner panel
+        pygame.draw.rect(surface, cfg.COLOR_CARD_BACK, rect, border_radius=cfg.CARD_RADIUS)
         pygame.draw.rect(
             surface, cfg.COLOR_CARD_BORDER, rect,
-            width=2, border_radius=cfg.CARD_RADIUS,
+            width=cfg.CARD_BORDER_WIDTH, border_radius=cfg.CARD_RADIUS,
         )
-        # Simple cross-hatch pattern on the back
-        inner = rect.inflate(-12, -12)
         pygame.draw.rect(
-            surface, (50, 80, 180), inner,
-            border_radius=cfg.CARD_RADIUS - 4,
+            surface, cfg.COLOR_CARD_BACK_PATTERN,
+            rect.inflate(-cfg.CARD_BACK_INSET, -cfg.CARD_BACK_INSET),
+            border_radius=cfg.CARD_BACK_PANEL_RADIUS,
         )
         return
 
     # Card face
-    pygame.draw.rect(
-        surface, cfg.COLOR_CARD_BG, rect,
-        border_radius=cfg.CARD_RADIUS,
-    )
+    pygame.draw.rect(surface, cfg.COLOR_CARD_BG, rect, border_radius=cfg.CARD_RADIUS)
     pygame.draw.rect(
         surface, cfg.COLOR_CARD_BORDER, rect,
-        width=2, border_radius=cfg.CARD_RADIUS,
+        width=cfg.CARD_BORDER_WIDTH, border_radius=cfg.CARD_RADIUS,
     )
 
-    # Determine text color based on suit
-    is_red = card.suit in ("Hearts", "Diamonds")
-    text_color = cfg.COLOR_RED if is_red else cfg.COLOR_SUIT_BLACK
-
-    # Draw rank in top-left
-    rank_surface = cfg.FONT_CARD_RANK.render(card.rank, True, text_color)
-    surface.blit(rank_surface, (x + 6, y + 4))
-
-    # Draw suit symbol below rank
+    # Red for hearts and diamonds, black for clubs and spades
+    text_color = cfg.COLOR_RED if card.suit in RED_SUITS else cfg.COLOR_SUIT_BLACK
     suit_symbol = SUIT_SYMBOLS[card.suit]
-    suit_surface = cfg.FONT_CARD_SUIT.render(suit_symbol, True, text_color)
-    surface.blit(suit_surface, (x + 6, y + 42))
 
-    # Draw large suit symbol in center
-    center_suit = cfg.FONT_CARD_RANK.render(suit_symbol, True, text_color)
-    center_rect = center_suit.get_rect(
-        center=(x + cfg.CARD_WIDTH // 2, y + cfg.CARD_HEIGHT // 2 + 10)
+    # Rank in the top-left, with the suit symbol beneath it
+    draw_text(surface, card.rank, cfg.FONT_CARD_RANK, text_color,
+              (x + cfg.CARD_PADDING, y + cfg.CARD_TOP_PADDING))
+    draw_text(surface, suit_symbol, cfg.FONT_CARD_SUIT, text_color,
+              (x + cfg.CARD_PADDING, y + cfg.CARD_SUIT_PADDING))
+
+    # Large suit symbol in the middle of the card
+    draw_text(surface, suit_symbol, cfg.FONT_CARD_RANK, text_color,
+              (x + cfg.CARD_WIDTH // 2,
+               y + cfg.CARD_HEIGHT // 2 + cfg.CARD_CENTER_OFFSET),
+              center=True)
+
+    # Rank repeated in the bottom-right, rotated 180° so it reads
+    # correctly when the card is turned the other way up
+    rank_rotated = pygame.transform.rotate(
+        cfg.FONT_CARD_RANK.render(card.rank, True, text_color), 180
     )
-    surface.blit(center_suit, center_rect)
+    surface.blit(rank_rotated, (
+        x + cfg.CARD_WIDTH - rank_rotated.get_width() - cfg.CARD_PADDING,
+        y + cfg.CARD_HEIGHT - rank_rotated.get_height() - cfg.CARD_TOP_PADDING,
+    ))
 
-    # Draw rank in bottom-right (rotated 180°)
-    rank_br = cfg.FONT_CARD_RANK.render(card.rank, True, text_color)
-    rank_br = pygame.transform.rotate(rank_br, 180)
-    surface.blit(rank_br, (x + cfg.CARD_WIDTH - rank_br.get_width() - 6,
-                           y + cfg.CARD_HEIGHT - rank_br.get_height() - 4))
+
+def hand_spacing(card_count: int) -> int:
+    """
+    Horizontal gap between cards in a hand.
+
+    Cards sit at the normal spacing unless that would overflow the
+    table, in which case they compress down to the tightest allowed gap.
+    """
+    if card_count < 2:
+        return cfg.CARD_SPACING
+
+    natural_width = card_count * cfg.CARD_WIDTH + (card_count - 1) * cfg.CARD_SPACING
+    if natural_width <= cfg.CARD_MAX_HAND_WIDTH:
+        return cfg.CARD_SPACING
+
+    compressed = (cfg.CARD_MAX_HAND_WIDTH - card_count * cfg.CARD_WIDTH) // (card_count - 1)
+    return max(compressed, cfg.CARD_MIN_SPACING)
 
 
 def draw_hand(
     surface: pygame.Surface,
-    cards: list,
+    cards: Sequence[Card],
     start_x: int,
     start_y: int,
-    hide_second: bool = False,
+    face_down: Sequence[int] = (),
 ) -> None:
     """
     Draw a hand of cards starting at (start_x, start_y).
 
-    If hide_second is True, the second card is drawn face-down
-    (used for the dealer's hole card).
+    `face_down` lists the indices to draw face-down — the dealer's hole
+    card, which is always index 1 while the round is still in play.
     """
-    # Use overlap if many cards to keep the hand on screen
-    total_width = len(cards) * cfg.CARD_WIDTH + (len(cards) - 1) * cfg.CARD_SPACING
-    available = cfg.WINDOW_WIDTH - 160  # margins on both sides
-    if total_width > available and len(cards) > 1:
-        spacing = (available - len(cards) * cfg.CARD_WIDTH) // (len(cards) - 1)
-        spacing = max(spacing, 10)
-    else:
-        spacing = cfg.CARD_SPACING
-
-    for i, card in enumerate(cards):
-        x = start_x + i * (cfg.CARD_WIDTH + spacing)
-        face_up = not (hide_second and i == 1)
-        draw_card(surface, x, start_y, card, face_up=face_up)
+    spacing = hand_spacing(len(cards))
+    for index, card in enumerate(cards):
+        draw_card(
+            surface,
+            start_x + index * (cfg.CARD_WIDTH + spacing),
+            start_y,
+            card,
+            face_up=index not in face_down,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -193,13 +236,16 @@ class BlackjackUI:
         self.clock = pygame.time.Clock()
         self.game = BlackjackGame()
 
-        # Create buttons
+        # Each button carries the action it performs, so click dispatch
+        # needs no mapping table: adding a button means creating it here
+        # and listing it in active_buttons().
         self.btn_hit = Button(
             cfg.BTN_HIT_X, cfg.BTN_HIT_Y,
             cfg.BTN_WIDTH, cfg.BTN_HEIGHT,
             "HIT",
             cfg.COLOR_BTN_HIT, cfg.COLOR_BTN_HIT_HOVER,
             cfg.FONT_BUTTON,
+            on_click=self.game.hit,
         )
         self.btn_stand = Button(
             cfg.BTN_STAND_X, cfg.BTN_STAND_Y,
@@ -207,6 +253,7 @@ class BlackjackUI:
             "STAND",
             cfg.COLOR_BTN_STAND, cfg.COLOR_BTN_STAND_HOVER,
             cfg.FONT_BUTTON,
+            on_click=self.game.stand,
         )
         self.btn_new_game = Button(
             cfg.BTN_NEW_GAME_X, cfg.BTN_NEW_GAME_Y,
@@ -214,10 +261,28 @@ class BlackjackUI:
             "NEW GAME",
             cfg.COLOR_BTN_NEW_GAME, cfg.COLOR_BTN_NEW_GAME_HOVER,
             cfg.FONT_BUTTON,
+            on_click=self.game.start_round,
         )
 
-        # Start the first round
+        # Deal the first round straight away
         self.game.start_round()
+
+    # ------------------------------------------------------------------
+    # Button visibility
+    # ------------------------------------------------------------------
+
+    def active_buttons(self) -> List[Button]:
+        """
+        The buttons that are clickable in the current game state.
+
+        Single source of truth: drawing and click handling both read
+        this, so they can never disagree about what is on screen.
+        """
+        if self.game.state == GameState.PLAYER:
+            return [self.btn_hit, self.btn_stand]
+        if self.game.round_over:
+            return [self.btn_new_game]
+        return []
 
     # ------------------------------------------------------------------
     # Drawing
@@ -227,21 +292,10 @@ class BlackjackUI:
         """Fill the background with a solid dark green."""
         self.screen.fill(cfg.COLOR_BG)
 
-    def draw_hand_value(
-        self,
-        x: int,
-        y: int,
-        label: str,
-        value: int,
-    ) -> None:
+    def draw_hand_value(self, x: int, y: int, label: str, value: int) -> None:
         """Draw a hand value label (e.g. 'Dealer: 17')."""
-        text = f"{label}: {value}"
-        # Shadow
-        shadow = cfg.FONT_HAND_VALUE.render(text, True, cfg.COLOR_TEXT_SHADOW)
-        self.screen.blit(shadow, (x + 1, y + 1))
-        # Main text
-        surface = cfg.FONT_HAND_VALUE.render(text, True, cfg.COLOR_TEXT)
-        self.screen.blit(surface, (x, y))
+        draw_text(self.screen, f"{label}: {value}", cfg.FONT_HAND_VALUE,
+                  cfg.COLOR_TEXT, (x, y), shadow=True)
 
     def draw_result(self) -> None:
         """Draw the round result text at the center of the screen."""
@@ -249,40 +303,22 @@ class BlackjackUI:
             return
 
         color = RESULT_COLORS.get(self.game.result, cfg.COLOR_RESULT_PUSH)
-
-        # Shadow
-        shadow = cfg.FONT_RESULT.render(
-            self.game.result_message, True, cfg.COLOR_TEXT_SHADOW
-        )
-        shadow_rect = shadow.get_rect(
-            center=(cfg.RESULT_TEXT_X + 2, cfg.RESULT_TEXT_Y + 2)
-        )
-        self.screen.blit(shadow, shadow_rect)
-
-        # Main text
-        text_surface = cfg.FONT_RESULT.render(
-            self.game.result_message, True, color
-        )
-        text_rect = text_surface.get_rect(
-            center=(cfg.RESULT_TEXT_X, cfg.RESULT_TEXT_Y)
-        )
-        self.screen.blit(text_surface, text_rect)
+        draw_text(self.screen, self.game.result_message, cfg.FONT_RESULT, color,
+                  (cfg.RESULT_TEXT_X, cfg.RESULT_TEXT_Y), center=True, shadow=True)
 
     def draw(self) -> None:
         """Render the entire frame."""
         self.draw_background()
 
-        # Draw dealer hand
-        hide_hole = not self.game.dealer_revealed
+        # Dealer hand, with the hole card face-down until it is revealed
+        face_down = () if self.game.dealer_revealed else (1,)
         draw_hand(
             self.screen,
             self.game.dealer_hand.cards,
             cfg.DEALER_HAND_X,
             cfg.DEALER_HAND_Y,
-            hide_second=hide_hole,
+            face_down=face_down,
         )
-
-        # Draw dealer value label
         self.draw_hand_value(
             cfg.DEALER_HAND_X + cfg.HAND_VALUE_OFFSET_X,
             cfg.DEALER_HAND_Y + cfg.HAND_VALUE_OFFSET_Y,
@@ -290,15 +326,13 @@ class BlackjackUI:
             self.game.dealer_value,
         )
 
-        # Draw player hand
+        # Player hand
         draw_hand(
             self.screen,
             self.game.player_hand.cards,
             cfg.PLAYER_HAND_X,
             cfg.PLAYER_HAND_Y,
         )
-
-        # Draw player value label
         self.draw_hand_value(
             cfg.PLAYER_HAND_X + cfg.HAND_VALUE_OFFSET_X,
             cfg.PLAYER_HAND_Y + cfg.HAND_VALUE_OFFSET_Y,
@@ -306,20 +340,14 @@ class BlackjackUI:
             self.game.player_value,
         )
 
-        # Draw result text
         self.draw_result()
 
-        # Draw buttons based on game state
+        # Hover is refreshed from the live mouse position every frame,
+        # so no MOUSEMOTION handling is needed.
         mouse_pos = pygame.mouse.get_pos()
-
-        if self.game.state == GameState.PLAYER:
-            self.btn_hit.update_hover(mouse_pos)
-            self.btn_stand.update_hover(mouse_pos)
-            self.btn_hit.draw(self.screen)
-            self.btn_stand.draw(self.screen)
-        elif self.game.round_over:
-            self.btn_new_game.update_hover(mouse_pos)
-            self.btn_new_game.draw(self.screen)
+        for button in self.active_buttons():
+            button.update_hover(mouse_pos)
+            button.draw(self.screen)
 
         pygame.display.flip()
 
@@ -336,26 +364,10 @@ class BlackjackUI:
                 return False
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                mouse_pos = event.pos
-
-                if self.game.state == GameState.PLAYER:
-                    if self.btn_hit.is_clicked(mouse_pos):
-                        self.game.hit()
-                    elif self.btn_stand.is_clicked(mouse_pos):
-                        self.game.stand()
-
-                elif self.game.round_over:
-                    if self.btn_new_game.is_clicked(mouse_pos):
-                        self.game.start_round()
-
-            # Also handle mouse motion for hover updates
-            if event.type == pygame.MOUSEMOTION:
-                mouse_pos = event.pos
-                if self.game.state == GameState.PLAYER:
-                    self.btn_hit.update_hover(mouse_pos)
-                    self.btn_stand.update_hover(mouse_pos)
-                elif self.game.round_over:
-                    self.btn_new_game.update_hover(mouse_pos)
+                for button in self.active_buttons():
+                    if button.is_clicked(event.pos):
+                        button.on_click()
+                        break
 
         return True
 
@@ -372,7 +384,6 @@ class BlackjackUI:
             self.clock.tick(cfg.FPS)
 
         pygame.quit()
-        sys.exit()
 
 
 # ---------------------------------------------------------------------------
@@ -380,5 +391,5 @@ class BlackjackUI:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    ui = BlackjackUI()
-    ui.run()
+    BlackjackUI().run()
+    sys.exit(0)
