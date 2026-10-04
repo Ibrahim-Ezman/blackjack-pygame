@@ -10,7 +10,7 @@ in isolation.
 import random
 from enum import Enum
 from dataclasses import dataclass
-from typing import List
+from typing import List, Sequence, Tuple
 
 
 # ---------------------------------------------------------------------------
@@ -27,6 +27,9 @@ SUIT_SYMBOLS = {
     "Clubs":    "♣",
     "Spades":   "♠",
 }
+
+# Suits drawn in red; everything else is drawn black
+RED_SUITS = frozenset({"Hearts", "Diamonds"})
 
 # Base value for each rank before soft-ace correction
 RANK_VALUES = {
@@ -51,7 +54,36 @@ class Card:
 
 
 # ---------------------------------------------------------------------------
-# Game states
+# Scoring
+# ---------------------------------------------------------------------------
+
+def score_cards(cards: Sequence[Card]) -> Tuple[int, int]:
+    """
+    Score a sequence of cards.
+
+    Returns (total, aces_high), where:
+      total     — the best total ≤ 21, or the minimum total if bust
+      aces_high — how many Aces are still counted as 11
+
+    Algorithm: optimistically count every Ace as 11, then demote Aces
+    to 1 (subtract 10 each) while the total would otherwise bust. This
+    "start high, correct down" order always finds the best legal total:
+    demoting an Ace that is still counted as 11 can only lower the total,
+    so once the high count busts, demoting is strictly the best move.
+
+    Both return values come from the same computation, so a hand's total
+    and its soft/hard status can never disagree.
+    """
+    total = sum(card.value for card in cards)
+    aces_high = sum(1 for card in cards if card.rank == "A")
+    while total > 21 and aces_high > 0:
+        total -= 10
+        aces_high -= 1
+    return total, aces_high
+
+
+# ---------------------------------------------------------------------------
+# Enums
 # ---------------------------------------------------------------------------
 
 class GameState(Enum):
@@ -78,20 +110,24 @@ class Hand:
     def clear(self) -> None:
         self.cards.clear()
 
+    def score(self) -> Tuple[int, int]:
+        """(total, aces_high) for the whole hand."""
+        return score_cards(self.cards)
+
+    def value_of_first(self, count: int) -> int:
+        """
+        Total of the first `count` cards only.
+
+        Used to score a partially revealed hand — e.g. the dealer's up
+        card while the hole card is still face down. Slicing past the end
+        is safe: a short slice is simply scored as-is.
+        """
+        return score_cards(self.cards[:count])[0]
+
     @property
     def value(self) -> int:
-        """
-        Best hand value ≤ 21, or the minimum possible value if bust.
-
-        Algorithm: sum all cards with Ace = 11, then demote Aces
-        to 1 (subtract 10 each) while the total exceeds 21.
-        """
-        total = sum(c.value for c in self.cards)
-        aces = sum(1 for c in self.cards if c.rank == "A")
-        while total > 21 and aces > 0:
-            total -= 10
-            aces -= 1
-        return total
+        """Best hand value ≤ 21, or the minimum possible value if bust."""
+        return score_cards(self.cards)[0]
 
     @property
     def is_bust(self) -> bool:
@@ -105,15 +141,13 @@ class Hand:
     @property
     def is_soft(self) -> bool:
         """
-        A hand is 'soft' if it contains an Ace counted as 11
-        (i.e. demoting it would lower the total).
+        True if an Ace is still counted as 11.
+
+        A soft hand can absorb a hit without busting — A+6 is soft 17,
+        and drawing a 10 makes 17 rather than 27 — which is why the
+        dealer rule is stated in terms of this flag.
         """
-        total = sum(c.value for c in self.cards)
-        aces = sum(1 for c in self.cards if c.rank == "A")
-        while total > 21 and aces > 0:
-            total -= 10
-            aces -= 1
-        return aces > 0  # at least one Ace still counted as 11
+        return score_cards(self.cards)[1] > 0
 
     def __len__(self) -> int:
         return len(self.cards)
@@ -179,7 +213,7 @@ class BlackjackGame:
         self.player_hand.clear()
         self.dealer_hand.clear()
         self.deck = Deck()
-        self.result = ""
+        self.result = None
         self.result_message = ""
         self.dealer_revealed = False
         self.state = GameState.DEALING
@@ -222,7 +256,9 @@ class BlackjackGame:
     def _dealer_play(self) -> None:
         """
         Dealer reveals hole card, then hits until hand value ≥ 17.
-        Standard casino rule: dealer stands on soft 17.
+
+        Standard casino rule: dealer stands on soft 17, so a hand such as
+        A+6 (soft 17) is not hit even though it could be improved.
         """
         self.dealer_revealed = True
         while self.dealer_hand.value < 17:
@@ -286,14 +322,10 @@ class BlackjackGame:
 
     @property
     def dealer_value(self) -> int:
-        """Dealer value — only counts revealed cards during play."""
+        """Dealer total — only the up card counts until the hole card is revealed."""
         if self.dealer_revealed:
             return self.dealer_hand.value
-        # Hide hole card: only count the first (face-up) card
-        if self.dealer_hand.cards:
-            first = self.dealer_hand.cards[0]
-            return RANK_VALUES[first.rank]
-        return 0
+        return self.dealer_hand.value_of_first(1)
 
     @property
     def round_over(self) -> bool:
