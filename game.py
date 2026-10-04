@@ -10,7 +10,7 @@ in isolation.
 import random
 from enum import Enum
 from dataclasses import dataclass
-from typing import List, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +92,14 @@ class GameState(Enum):
     PLAYER    = "player"     # Player's turn (hit or stand)
     DEALER    = "dealer"     # Dealer's turn (auto-play)
     OVER      = "over"       # Round finished, show result
+
+
+class Result(Enum):
+    """Outcome of a finished round."""
+    WIN       = "win"
+    LOSE      = "lose"
+    PUSH      = "push"
+    BLACKJACK = "blackjack"   # Player 21 on the initial two cards
 
 
 # ---------------------------------------------------------------------------
@@ -200,7 +208,7 @@ class BlackjackGame:
         self.player_hand = Hand()
         self.dealer_hand = Hand()
         self.state = GameState.DEALING
-        self.result: str = ""          # "win", "lose", "push", "blackjack"
+        self.result: Optional[Result] = None
         self.result_message: str = ""  # Human-readable result text
         self.dealer_revealed = False   # Whether dealer's hole card is visible
 
@@ -270,47 +278,46 @@ class BlackjackGame:
     # ------------------------------------------------------------------
 
     def _finish_round(self) -> None:
-        """Compare hands and set the result."""
+        """
+        Compare hands and set the result.
+
+        Rules, in precedence order:
+          1. Both blackjack    → push
+          2. Player blackjack  → player wins outright
+          3. Dealer blackjack  → player loses
+          4. Player bust       → player loses
+          5. Dealer bust       → player wins
+          6. Otherwise         → higher total wins; equal totals push
+
+        The blackjack checks must precede the total comparison because a
+        blackjack beats a plain 21 made with three or more cards.
+        """
         self.dealer_revealed = True
         self.state = GameState.OVER
 
-        pv = self.player_hand.value
-        dv = self.dealer_hand.value
-        p_bust = self.player_hand.is_bust
-        d_bust = self.dealer_hand.is_bust
-        p_bj = self.player_hand.is_blackjack
-        d_bj = self.dealer_hand.is_blackjack
+        player = self.player_hand
+        dealer = self.dealer_hand
+        pv, dv = player.value, dealer.value
 
-        # Both blackjack = push
-        if p_bj and d_bj:
-            self.result = "push"
-            self.result_message = "Push — both have Blackjack!"
-        # Player blackjack wins (unless dealer also has it, handled above)
-        elif p_bj:
-            self.result = "blackjack"
-            self.result_message = "Blackjack! You win!"
-        # Dealer blackjack wins
-        elif d_bj:
-            self.result = "lose"
-            self.result_message = "Dealer has Blackjack. You lose."
-        # Player bust = immediate loss
-        elif p_bust:
-            self.result = "lose"
-            self.result_message = f"Bust! You went over 21 ({pv})."
-        # Dealer bust = player wins
-        elif d_bust:
-            self.result = "win"
-            self.result_message = f"Dealer busts with {dv}. You win!"
-        # Compare values
+        if player.is_blackjack and dealer.is_blackjack:
+            result, message = Result.PUSH, "Push — both have Blackjack!"
+        elif player.is_blackjack:
+            result, message = Result.BLACKJACK, "Blackjack! You win!"
+        elif dealer.is_blackjack:
+            result, message = Result.LOSE, "Dealer has Blackjack. You lose."
+        elif player.is_bust:
+            result, message = Result.LOSE, f"Bust! You went over 21 ({pv})."
+        elif dealer.is_bust:
+            result, message = Result.WIN, f"Dealer busts with {dv}. You win!"
         elif pv > dv:
-            self.result = "win"
-            self.result_message = f"You win! {pv} vs {dv}."
+            result, message = Result.WIN, f"You win! {pv} vs {dv}."
         elif dv > pv:
-            self.result = "lose"
-            self.result_message = f"Dealer wins. {dv} vs {pv}."
+            result, message = Result.LOSE, f"Dealer wins. {dv} vs {pv}."
         else:
-            self.result = "push"
-            self.result_message = f"Push — both have {pv}."
+            result, message = Result.PUSH, f"Push — both have {pv}."
+
+        self.result = result
+        self.result_message = message
 
     # ------------------------------------------------------------------
     # Convenience properties for the UI
