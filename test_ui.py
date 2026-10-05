@@ -9,8 +9,11 @@ all exercised without opening a window.
 """
 
 import os
+import threading
+import time
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import pygame  # noqa: E402  (must follow the SDL driver setting)
 
@@ -148,6 +151,25 @@ def test_quit_event() -> None:
     check("QUIT event stops the loop", ui.handle_events() is False)
 
 
+def test_run_loop_exits_on_quit() -> None:
+    """
+    Drive the real run() loop, not just its pieces.
+
+    Posts a QUIT from a timer thread, so if the loop ever stops noticing
+    QUIT events the test hangs and CI times out instead of silently
+    passing. run() returns on its own once the loop exits.
+    """
+    ui = BlackjackUI()
+
+    def quit_soon() -> None:
+        time.sleep(0.3)
+        pygame.event.post(pygame.event.Event(pygame.QUIT))
+
+    threading.Thread(target=quit_soon, daemon=True).start()
+    ui.run()
+    check("run() returns after a QUIT event", True)
+
+
 def test_full_round_end_to_end() -> None:
     """Play a whole round through the UI until the engine reports a result."""
     ui = BlackjackUI()
@@ -178,6 +200,7 @@ def main() -> int:
         test_draw_does_not_crash,
         test_hand_spacing_compresses,
         test_quit_event,
+        test_run_loop_exits_on_quit,
         test_full_round_end_to_end,
     ]
 
