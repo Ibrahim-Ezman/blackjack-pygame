@@ -1,115 +1,64 @@
 # Blackjack
 
-A complete, playable Blackjack game built with Python and Pygame. Single
-deck, standard casino rules, clean table layout.
+A playable Blackjack game in Python and Pygame. Single deck, standard casino
+rules, three files.
 
 ![Blackjack gameplay](docs/gameplay.png)
 
-*A round in progress — the dealer's hole card is face down, and only the
-up card counts toward the displayed dealer total.*
+## What it does
 
-![Blackjack result](docs/result-blackjack.png)
+Full 52-card deck, reshuffled every round. Aces count as 11 or 1 and correct
+themselves to whatever doesn't bust the hand. The dealer hits to 17 and stands
+on soft 17. A blackjack on the deal ends the round immediately, for either
+side, and win, lose, push and blackjack each get their own message.
 
-*A finished round. The hole card is revealed and the outcome is shown at
-the centre of the table.*
+No betting, no chips, no sound, no animations. Those were left out on purpose.
 
----
-
-## Features
-
-- **Full 52-card deck** — all 13 ranks across 4 suits, reshuffled every round
-- **Correct soft-ace scoring** — an Ace counts as 11 or 1, automatically
-  corrected to the best value that does not bust the hand
-- **Instant blackjack detection** — a natural 21 on the deal ends the round
-  immediately, for either side
-- **Standard dealer AI** — the dealer hits until 17 or higher and stands on
-  soft 17, matching casino rules
-- **Complete outcome handling** — win, lose, push and blackjack, each with
-  its own message and colour
-- **Clean table layout** — dark green felt, cards drawn as rounded rectangles
-  with the rank and suit in the corners and a large suit pip in the centre
-- **Hover feedback** on every button
-
-Deliberately out of scope: no betting or chip tracking, no sound, no card
-animations, no statistics. Just the game.
-
-## Requirements
-
-- Python 3.10 or newer
-- [Pygame](https://www.pygame.org/) 2.5+
-
-## Installation
+## Running it
 
 ```bash
 pip install -r requirements.txt
-```
-
-## Running
-
-```bash
 python ui.py
 ```
 
-A round is dealt automatically on launch.
+Python 3.10+ and Pygame 2.5+.
 
-## How to Play
+## Tests
 
-| Action | What it does |
-|--------|--------------|
-| **HIT** | Draw another card. Going over 21 busts you and ends the round. |
-| **STAND** | End your turn. The dealer reveals the hole card and plays out. |
-| **NEW GAME** | Appears once the round is over. Deals a fresh hand. |
-
-Get as close to 21 as you can without going over, and beat the dealer's total.
-
-## Rules
-
-- Number cards are worth their face value
-- Face cards (J, Q, K) are worth 10
-- Aces are worth 11, or 1 if 11 would bust the hand
-- The dealer hits until their hand is 17 or higher
-- **Blackjack** — 21 on your first two cards — beats an ordinary 21 made with
-  three or more cards
-- Going over 21 (**bust**) loses immediately
-- Equal totals are a **push** (a tie)
-
-## Architecture
-
-The project is split so that the rules and the rendering never mix:
-
-```
-blackjack_game/
-├── game.py           # Game engine — deck, hands, scoring, dealer AI
-├── ui.py             # Pygame rendering and input handling
-├── config.py         # Constants — colours, card sizes, layout, fonts
-├── docs/             # Screenshots
-├── requirements.txt
-└── README.md
+```bash
+python test_game.py    # 65 checks: scoring, dealer AI, win/lose/push
+python test_ui.py      # 22 checks: buttons, rendering, a full round
 ```
 
-`game.py` contains no rendering code and never imports Pygame. `ui.py`
-contains no rules — it reads the engine's public properties each frame and
-draws them, holding no state of its own. That separation means the game
-logic can be exercised without opening a window, and the screen can never
-disagree with the engine about the score.
+Plain Python, no pytest. `test_ui.py` uses SDL's dummy video driver, so it
+runs over SSH or in CI.
 
-**Key types**
+## How it's put together
 
-- `Card` — a frozen dataclass holding a rank and suit, with a computed value
-- `Hand` — a list of cards, with `value`, `is_bust`, `is_blackjack` and
-  `is_soft` derived from it
-- `Deck` — a shuffled 52-card deck that deals from the top
-- `BlackjackGame` — the round engine: deals, applies player actions, runs the
-  dealer, and resolves the outcome
-- `GameState` — the round lifecycle: `DEALING → PLAYER → DEALER → OVER`
+```
+game.py      the rules: deck, hands, scoring, dealer, outcome
+ui.py        drawing and input
+config.py    colours, sizes, positions, fonts
+```
 
-## Notes on this version
+`game.py` never imports Pygame. `ui.py` never decides anything about the game.
+It reads the engine's properties each frame and paints them, and it keeps no
+score of its own, so the window can't disagree with the engine about what's
+happening. That's also why the rules are testable from a terminal without
+opening a window.
 
-This is the initial implementation. It has no automated test suite yet — a
-later revision extracts the ace-scoring arithmetic into a single shared
-function, replaces the string results with an enum, and adds engine and
-headless UI tests.
+## AI assistance
+
+I built this with an AI coding assistant, and I'd rather say so up front than
+have it come up later.
+
+The split: I set the scope, the three-file structure, and what to leave out,
+and I reviewed and ran everything before it went in. The assistant wrote the
+implementation and the tests. It also caught things I'd missed, including a
+scoring loop duplicated across two methods, a redundant event handler, and a
+wrong assumption in my own tests about how often a deal is an instant
+blackjack. The commit history is the real record of what changed and why.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).

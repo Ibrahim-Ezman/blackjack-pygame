@@ -1,41 +1,59 @@
 # Changelog
 
-## 1.0.0 — Initial release
+## 1.1.0
 
-The first complete, playable version.
+A cleanup pass over the engine and the UI, plus tests for both.
 
-**Game engine (`game.py`)**
+### Scoring
 
-- `Card` as a frozen dataclass with a computed value
-- `Hand` with `value`, `is_bust`, `is_blackjack` and `is_soft` properties
-- `Deck` — a standard 52-card deck, shuffled on construction
-- `BlackjackGame` — deals the opening hands, applies player actions, runs
-  the dealer, and resolves the outcome
-- `GameState` enum driving the round lifecycle
-  (`DEALING → PLAYER → DEALER → OVER`)
+`Hand.value` and `Hand.is_soft` were each running their own copy of the same
+ace loop. Two copies of the rule that decides the score is two chances to get
+it wrong, and `is_soft` wasn't being called by anything anyway. Both read from
+one `score_cards()` now. `dealer_value` was doing the same thing from the
+other direction, reaching into `dealer_hand.cards[0]` and scoring the card
+itself, so the engine knew how to score a hand and separately knew how to
+value a card. It asks the hand instead.
 
-**Interface (`ui.py`)**
+### Outcomes
 
-- Dark green table, cards drawn as rounded rectangles with corner ranks and
-  a large centre pip
-- Dealer hand at the top, player hand at the bottom, both with live totals
-- Dealer's hole card drawn face down until the round resolves
-- HIT, STAND and NEW GAME buttons with hover states
-- Result text centred on the table, coloured per outcome
+Results were bare strings, written in one file and compared in another. A typo
+wouldn't have raised anything. It would have fallen through to the `else`
+branch and quietly coloured a win as a push. They're a `Result` enum now, so a
+misspelling fails at import.
 
-**Rules implemented**
+### UI
 
-- Face cards worth 10, Aces worth 11 or 1 with automatic correction
-- Blackjack detected on the deal, for either side
-- Dealer hits to 17, stands on soft 17
-- Win, lose, push and blackjack all handled
+Which buttons were visible got worked out twice, once to draw them and once to
+handle clicks, in two `if/elif` chains that had to stay in step. There's one
+`active_buttons()` now. Buttons carry their own action, so click dispatch is a
+loop rather than a mapping. The hover handler on mouse-move is gone, because
+the draw loop already reads the live mouse position every frame.
 
-**Known limitations**
+### Tests
 
-- No automated test suite
-- `Hand.value` and `Hand.is_soft` each contain their own copy of the
-  ace-scoring loop
-- `dealer_value` reads `dealer_hand.cards[0]` directly and re-scores it,
-  duplicating the card-valuation rule
-- Round outcomes are plain strings rather than an enum
-- Button visibility is decided separately in `draw()` and `handle_events()`
+65 engine checks and 22 UI checks, both runnable with plain Python. Writing
+them turned up two things I had wrong. About one deal in ten is an instant
+blackjack, which legitimately ends the round on the deal, and my first tests
+assumed that never happened.
+
+### Config
+
+Six constants nothing referenced are gone. Eleven values that were sitting
+hardcoded in `ui.py` moved into `config.py` with the rest.
+
+## 1.0.0
+
+First working version.
+
+Three files: `game.py` for the rules, `ui.py` for the drawing, `config.py` for
+the constants. A full 52-card deck reshuffled each round, aces correcting
+themselves between 11 and 1, blackjack detected on the deal, and a dealer that
+hits to 17 and stands on soft 17. Win, lose, push and blackjack each get their
+own message.
+
+Cards are drawn as rounded rectangles with the rank and suit in the corners
+and a large pip in the middle. The dealer's hole card stays face down until
+the round resolves. HIT, STAND and NEW GAME buttons with hover states.
+
+No betting, no chips, no sound, no animations, no stats. That was the scope
+from the start.
