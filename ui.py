@@ -10,8 +10,18 @@ import pygame
 import sys
 from typing import Optional, Tuple
 
-from game import BlackjackGame, GameState, Card, SUIT_SYMBOLS
+from game import BlackjackGame, GameState, Card, Result, SUIT_SYMBOLS
 import config as cfg
+
+
+# Which colour each outcome is drawn in. Presentation lives here, not in
+# the engine, so game.py never needs to know about colours.
+RESULT_COLORS = {
+    Result.WIN:       cfg.COLOR_RESULT_WIN,
+    Result.BLACKJACK: cfg.COLOR_RESULT_BJ,
+    Result.LOSE:      cfg.COLOR_RESULT_LOSE,
+    Result.PUSH:      cfg.COLOR_RESULT_PUSH,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -238,16 +248,7 @@ class BlackjackUI:
         if not self.game.round_over or not self.game.result_message:
             return
 
-        # Choose color based on result
-        result = self.game.result
-        if result == "win":
-            color = cfg.COLOR_RESULT_WIN
-        elif result == "blackjack":
-            color = cfg.COLOR_RESULT_BJ
-        elif result == "lose":
-            color = cfg.COLOR_RESULT_LOSE
-        else:
-            color = cfg.COLOR_RESULT_PUSH
+        color = RESULT_COLORS.get(self.game.result, cfg.COLOR_RESULT_PUSH)
 
         # Shadow
         shadow = cfg.FONT_RESULT.render(
