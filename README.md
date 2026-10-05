@@ -27,11 +27,12 @@ Python 3.10+ and Pygame 2.5+.
 
 ```bash
 python test_game.py    # 65 checks: scoring, dealer AI, win/lose/push
-python test_ui.py      # 22 checks: buttons, rendering, a full round
+python test_ui.py      # 23 checks: buttons, rendering, a full round
 ```
 
 Plain Python, no pytest. `test_ui.py` uses SDL's dummy video driver, so it
-runs over SSH or in CI.
+runs over SSH or in CI. Both run on every push and pull request, on Python
+3.10 and 3.12, via `.github/workflows/tests.yml`.
 
 ## How it's put together
 

@@ -31,10 +31,15 @@ the draw loop already reads the live mouse position every frame.
 
 ### Tests
 
-65 engine checks and 22 UI checks, both runnable with plain Python. Writing
+65 engine checks and 23 UI checks, both runnable with plain Python. Writing
 them turned up two things I had wrong. About one deal in ten is an instant
 blackjack, which legitimately ends the round on the deal, and my first tests
 assumed that never happened.
+
+They run in CI now, on Python 3.10 and 3.12. That was worth doing for a
+duller reason than catching regressions: everything up to this point had only
+ever been run on Windows, and the workflow is the first time the code has
+been executed on Linux.
 
 ### Config
 
