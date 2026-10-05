@@ -1,5 +1,7 @@
 # Blackjack
 
+[![tests](https://github.com/Ibrahim-Ezman/blackjack-pygame/actions/workflows/tests.yml/badge.svg)](https://github.com/Ibrahim-Ezman/blackjack-pygame/actions/workflows/tests.yml)
+
 A playable Blackjack game in Python and Pygame. Single deck, standard casino
 rules, three files.
 
